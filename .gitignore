@@ -123,9 +123,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
 .venv
-env/
 venv/
 ENV/
 env.bak/
@@ -165,3 +163,4 @@ cython_debug/
 docker/mongodb
 docker/.env!/src/models/db_schemes/rag_qa/alembic.ini
 !/src/models/db_schemes/rag_qa/alembic.ini
+/src/.env
