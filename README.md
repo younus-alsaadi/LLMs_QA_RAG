@@ -4,7 +4,7 @@ This is a minimal implementation of the Retrieval-Augmented Generation (RAG) mod
 
 ## Requirements
 
-- Python 3.8 or later
+- Python 3.9 or later
 
 ### Install Python using MiniConda
 
