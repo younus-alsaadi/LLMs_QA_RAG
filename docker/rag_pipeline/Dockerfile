@@ -23,7 +23,7 @@ RUN uv pip install -r requirements.txt --system
 COPY src/ /app/src
 
 # Put alembic.ini alongside your code
-COPY docker/rag_pipeline/alembic.ini /app/src/models/db_schemes/rag_qa/alembic.ini
+COPY docker/rag_pipeline/alembic.example.ini /app/src/models/db_schemes/rag_qa/alembic.ini
 
 COPY docker/rag_pipeline/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

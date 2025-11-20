@@ -2,6 +2,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
+import os
 
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ from src.models.db_schemes.rag_qa.schemes import SQLAlchemyBase
 
 config = context.config
 
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
@@ -30,6 +32,19 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
+
+# Build DB URL from environment variables (K8s Secret / ConfigMap or docker-compose .env)
+db_user = os.getenv("POSTGRES_USERNAME", "postgres")
+db_password = os.getenv("POSTGRES_PASSWORD", "Postgres123")
+db_host = os.getenv("POSTGRES_HOST", "localhost")
+db_port = os.getenv("POSTGRES_PORT", "5432")
+db_name = os.getenv("POSTGRES_MAIN_DATABASE", "postgres")
+
+db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+# Override sqlalchemy.url from alembic.ini with our env-based URL
+config.set_main_option("sqlalchemy.url", db_url)
+
 target_metadata = SQLAlchemyBase.metadata
 
 # other values from the config, defined by the needs of env.py,
