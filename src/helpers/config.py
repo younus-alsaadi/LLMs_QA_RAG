@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 THIS_DIR = Path(__file__).resolve().parent          # …/src/helpers
 ENV_PATH = THIS_DIR.parent / ".env"
@@ -27,10 +27,10 @@ class Settings(BaseSettings):
     EMBEDDING_BACKEND: str
 
     OPENAI_API_KEY: str = None
-    OPENAI_API_URL: str = None
+    OPENAI_API_URL: Optional[str] = None
     COHERE_API_KEY: str = None
 
-    GENERATION_MODEL_ID_LITERAL: List[str] = None
+    GENERATION_MODEL_ID_LITERAL: Optional[List[str]] = None
     GENERATION_MODEL_ID: str = None
     EMBEDDING_MODEL_ID: str = None
     EMBEDDING_MODEL_SIZE: int = None
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     GENERATION_DAFAULT_MAX_TOKENS: int = None
     GENERATION_DAFAULT_TEMPERATURE: float = None
 
-    VECTOR_DB_BACKEND_LITERAL: List[str] = None
+    VECTOR_DB_BACKEND_LITERAL: Optional[List[str]] = None
     VECTOR_DB_BACKEND : str
     VECTOR_DB_PATH : str
     VECTOR_DB_DISTANCE_METHOD: str = None
