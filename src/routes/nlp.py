@@ -64,8 +64,6 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
     total_chunks_count = await chunk_model.get_total_chunks_count(project_id=project.project_id)
     pbar = tqdm(total=total_chunks_count, desc="Vector Indexing", position=0)
 
-
-
     while has_records:
         page_chunks=await chunk_model.get_project_chunks(project_id=project.project_id,page_no=page_number)
         if len(page_chunks):
@@ -225,3 +223,5 @@ async def answer_rag_from_user(request: Request, project_id: int, search_request
             "full_prompt": full_prompt,
             "chat_history": chat_history
         })
+
+

@@ -165,58 +165,108 @@ class PGVectorProvider(VectorDBInterface):
         return True
 
 
-
-    async def insert_many(self, collection_name: str, texts: list, vectors: list, metadata: list = None,
-                    record_ids: list = None, batch_size: int = 50):
+    async def insert_many(
+            self,
+            collection_name: str,
+            texts: list,
+            vectors: list,
+            metadata: list = None,
+            record_ids: list = None,
+            batch_size: int = 50,
+    ) -> bool:
+        # 1) Check collection exists
         is_collection_existed = await self.is_collection_existed(collection_name=collection_name)
         if not is_collection_existed:
-            self.logger.error(f"Can not insert new records to non-existed collection: {collection_name}")
+            self.logger.error(f"Cannot insert new records to non-existent collection: {collection_name}")
             return False
 
-        if len(vectors) != len(record_ids):
-            self.logger.error(f"Invalid data items for collection: {collection_name}")
+        n = len(texts)
+
+        # 2) Basic length checks
+        if len(vectors) != n:
+            self.logger.error(
+                f"Invalid data items for collection {collection_name}: "
+                f"len(texts)={n}, len(vectors)={len(vectors)}"
+            )
             return False
 
-        if not metadata or len(metadata) == 0:
-            metadata = [None] * len(texts)
+        if record_ids is None:
+            self.logger.error("record_ids must not be None for insert_many")
+            return False
 
-        print(f"text len is {len(texts)}")
+        if len(record_ids) != n:
+            self.logger.error(
+                f"Invalid record_ids length for collection {collection_name}: "
+                f"len(record_ids)={len(record_ids)}, expected={n}"
+            )
+            return False
+
+        # 3) Metadata normalization
+        if metadata is None:
+            metadata = [None] * n
+        elif len(metadata) != n:
+            self.logger.error(
+                f"Invalid metadata length for collection {collection_name}: "
+                f"len(metadata)={len(metadata)}, expected={n}"
+            )
+            return False
+
+        self.logger.info(f"Inserting {n} records into collection {collection_name} (batch_size={batch_size})")
+
+        # 4) Simple validation / sanitization of collection name (example)
+        #    adjust this to your rules (e.g. allow only letters, digits, underscore)
+        if not collection_name.isidentifier():
+            self.logger.error(f"Invalid collection_name: {collection_name}")
+            return False
+
+        insert_sql = sql_text(
+            f"""
+                INSERT INTO {collection_name} (
+                    {PgVectorTableSchemeEnums.TEXT.value},
+                    {PgVectorTableSchemeEnums.VECTOR.value},
+                    {PgVectorTableSchemeEnums.METADATA.value},
+                    {PgVectorTableSchemeEnums.CHUNK_ID.value}
+                )
+                VALUES (:text, :vector, :metadata, :chunk_id)
+                """
+        )
 
         async with self.db_client() as session:
             async with session.begin():
-                for i in range(0, len(texts), batch_size):
+                for i in range(0, n, batch_size):
                     batch_texts = texts[i:i + batch_size]
                     batch_vectors = vectors[i:i + batch_size]
                     batch_metadata = metadata[i:i + batch_size]
                     batch_record_ids = record_ids[i:i + batch_size]
 
                     values = []
+                    for _text, _vector, _metadata, _record_id in zip(
+                            batch_texts, batch_vectors, batch_metadata, batch_record_ids
+                    ):
+                        metadata_json = (
+                            json.dumps(_metadata, ensure_ascii=False)
+                            if _metadata is not None
+                            else "{}"
+                        )
 
-                    for _text, _vector, _metadata, _record_id in zip(batch_texts, batch_vectors, batch_metadata,                                       batch_record_ids):
+                        vector_str = "[" + ",".join(str(v) for v in _vector) + "]"
 
-                        metadata_json = json.dumps(_metadata, ensure_ascii=False) if _metadata is not None else "{}" #convert dic to json
+                        values.append(
+                            {
+                                "text": _text,
+                                "vector": vector_str,  # string, not list
+                                "metadata": metadata_json,
+                                "chunk_id": _record_id,
+                            }
+                        )
 
-                        values.append({
-                            'text': _text,
-                            'vector': "[" + ",".join([ str(v) for v in _vector ]) + "]",
-                            'metadata': metadata_json,
-                            'chunk_id': _record_id
-                        })
+                    # EXECUTE ONCE PER BATCH
+                    await session.execute(insert_sql, values)
 
-                        batch_insert_sql = sql_text(f'INSERT INTO {collection_name} '
-                                                    f'({PgVectorTableSchemeEnums.TEXT.value}, '
-                                                    f'{PgVectorTableSchemeEnums.VECTOR.value}, '
-                                                    f'{PgVectorTableSchemeEnums.METADATA.value}, '
-                                                    f'{PgVectorTableSchemeEnums.CHUNK_ID.value}) '
-                                                    f'VALUES (:text, :vector, :metadata, :chunk_id)')
-
-
-                        await session.execute(batch_insert_sql, values)
-                        
+        # 5) Create index (ideally idempotent or done at collection creation time)
         await self.create_vector_index(collection_name=collection_name)
 
         return True
-
 
     async def search_by_vector(self, collection_name: str, vector: list, limit: int) -> List[RetrievedDocument]:
 
