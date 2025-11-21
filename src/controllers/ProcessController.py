@@ -7,6 +7,14 @@ from src.models import ProcessingEnum
 # from langchain_text_splitters import RecursiveCharacterTextSplitter, TextSplitter
 from typing import List
 
+from ..helpers.chunking import RecursiveTokenChunker
+
+import tiktoken
+
+encoding = tiktoken.get_encoding("cl100k_base")  # same used by GPT-3.5/4
+
+def count_tokens(text: str) -> int:
+    return len(encoding.encode(text))
 
 @dataclass
 class Document:
@@ -69,10 +77,11 @@ class ProcessController(BaseController):
         #chunks=text_splitter.create_documents(file_content_texts,metadatas=file_content_metadata)
 
 
-        chunks = self.process_simpler_splitter(
+        chunks = self.process_recursive_splitter(
             texts=file_content_texts,
             metadatas=file_content_metadata,
             chunk_size=chunk_size,
+            overlap_size=overlap_size,
         )
 
         return chunks
@@ -104,6 +113,44 @@ class ProcessController(BaseController):
             ))
 
         return chunks
+
+
+    def process_recursive_splitter(
+        self,
+        texts: List[str],
+        metadatas: List[dict],
+        chunk_size: int,
+        overlap_size: int = 20,
+    ):
+        """
+        Split text using RecursiveTokenChunker (recursive separators).
+        """
+        # combine all pages
+        full_text = "\n\n".join(texts)
+
+        splitter = RecursiveTokenChunker(
+            chunk_size=chunk_size,
+            chunk_overlap=overlap_size,
+            separators=["\n\n", "\n", ".", "?", "!", " ", ""],
+            keep_separator=True,
+            length_function=count_tokens,
+        )
+
+        raw_chunks = splitter.split_text(full_text)
+
+        chunks: List[Document] = []
+        base_metadata = metadatas[0] if metadatas else {}
+
+        for i, chunk_text in enumerate(raw_chunks):
+            md = dict(base_metadata)
+            md["chunk_id"] = i
+            chunks.append(Document(
+                page_content=chunk_text.strip(),
+                metadata=md,
+            ))
+
+        return chunks
+
 
 
 
