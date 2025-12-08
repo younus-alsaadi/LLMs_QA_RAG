@@ -16,8 +16,10 @@ from src.models.enum.AssetTypeEnum import AssetTypeEnum
 import os
 from bson.objectid import ObjectId
 from ..controllers import NLPController
+from ..utils.chunk_processing import clean_text_for_db
 
 logger = logging.getLogger('uvicorn.error')
+logger.setLevel(logging.DEBUG)
 
 data_router = APIRouter(
     prefix="/api/v1/data",
@@ -26,8 +28,8 @@ data_router = APIRouter(
 
 @data_router.post("/upload/{project_id}")
 async def upload_data(request:Request,project_id: int, file: UploadFile, app_settings: Settings = Depends(get_settings)):
-
-    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+    container = request.app.state.container
+    project_model = await ProjectModel.create_instance(db_client=container.db_client)
 
     project=await project_model.get_project_or_create_one(project_id=project_id)
 
@@ -35,8 +37,10 @@ async def upload_data(request:Request,project_id: int, file: UploadFile, app_set
 
     id_valid, result_single = data_controller.validate_uploaded_file(file=file)
     if not id_valid:
-        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=
-        {"response":result_single})
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"response": result_single},
+        )
 
 
     project_dir_path=ProjectController().get_project_path(project_id=project_id)
@@ -61,12 +65,13 @@ async def upload_data(request:Request,project_id: int, file: UploadFile, app_set
         )
     #store the assets in the databaes
 
-    asset_model=await AssetModel.create_instance(db_client=request.app.db_client)
+    asset_model=await AssetModel.create_instance(db_client=container.db_client)
 
     asset_resource=Asset(
         asset_project_id=project.project_id,
         asset_type=AssetTypeEnum.FILE.value,
-        asset_name=file_id,
+        asset_name=file.filename,
+        asset_name_unique=file_id,
         asset_size=os.path.getsize(file_path)
 
     )
@@ -87,24 +92,27 @@ async def process_endpoint(request:Request,project_id: int, process_request: Pro
     overlap_size = process_request.overlap_size
     do_reset=process_request.do_reset
 
-    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+    container = request.app.state.container
+
+    project_model = await ProjectModel.create_instance(db_client=container.db_client)
 
     project = await project_model.get_project_or_create_one(project_id=project_id)
 
     nlp_controller = NLPController(
-        vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client,
-        embedding_client=request.app.embedding_client,
-        template_parser=request.app.template_parser,
+        vectordb_client=container.vectordb_client,
+        generation_client=container.generation_client,
+        embedding_client=container.embedding_client,
+        template_parser=container.template_parser,
     )
 
-    asset_model = await AssetModel.create_instance(db_client=request.app.db_client)
+    asset_model = await AssetModel.create_instance(db_client=container.db_client)
+
 
     project_files_ids={}
     if process_request.file_id:
         asset_record=await asset_model.get_one_asset_record(
             asset_project_id=project.project_id,
-            asset_name=process_request.file_id,
+            asset_name_unique=process_request.file_id, # file_id it's the unique name of the file
         )
 
         if asset_record is None:
@@ -116,7 +124,7 @@ async def process_endpoint(request:Request,project_id: int, process_request: Pro
             )
 
         project_files_ids = {
-            asset_record.asset_id: asset_record.asset_name
+            asset_record.asset_id: asset_record.asset_name_unique
         }
     else:
 
@@ -124,8 +132,10 @@ async def process_endpoint(request:Request,project_id: int, process_request: Pro
             asset_project_id=project.project_id,
             asset_type=AssetTypeEnum.FILE.value)
 
+
+
         project_files_ids = {
-            record.asset_id: record.asset_name
+            record.asset_id: (record.asset_name_unique, record.asset_name)
             for record in project_files
         }
 
@@ -142,22 +152,19 @@ async def process_endpoint(request:Request,project_id: int, process_request: Pro
     no_records=0
     no_files=0
 
-    chunk_model = await ChunkModel.create_instance(db_client=request.app.db_client)
+    chunk_model = await ChunkModel.create_instance(db_client=container.db_client)
 
     if do_reset == 1:
         # delete associated vectors collection
         collection_name = nlp_controller.create_collection_name(project_id=project.project_id)
-        _ = await request.app.vectordb_client.delete_collection(collection_name=collection_name)
+        _ = await container.vectordb_client.delete_collection(collection_name=collection_name)
 
         _ = await chunk_model.delete_chunks_by_project_id(
             project_id=project.project_id
         )
 
 
-
-    logger.debug(f"len(project_files_ids)={len(project_files_ids)}")
-
-    for asset_id, file_id in project_files_ids.items():
+    for asset_id, (file_id, asset_name) in project_files_ids.items():
 
         logger.debug("=" * 20)
         logger.debug(f"asset_id type = {type(asset_id)}, value = {asset_id} || file_id = {file_id}")
@@ -189,16 +196,15 @@ async def process_endpoint(request:Request,project_id: int, process_request: Pro
 
         file_chunks_records = [
             DataChunk(
-                chunk_text=chunk.page_content,
+                chunk_text=clean_text_for_db(chunk.page_content.strip()),
                 chunk_metadata=chunk.metadata,
                 chunk_order=i + 1,
                 chunk_project_id=project.project_id,
-                chunk_asset_id=asset_id
+                chunk_asset_id=asset_id,
+                chunk_asset_name=asset_name
             )
             for i, chunk in enumerate(file_chunks)
         ]
-
-
 
         no_records += await chunk_model.insert_many_chunks(chunks=file_chunks_records)
         no_files+=1

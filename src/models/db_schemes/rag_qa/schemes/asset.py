@@ -12,6 +12,7 @@ class Asset(SQLAlchemyBase):
 
     asset_type = Column(String, nullable=False)
     asset_name = Column(String, nullable=False)
+    asset_name_unique = Column(String, nullable=False)
     asset_size = Column(Integer, nullable=False)
     asset_config = Column(JSONB, nullable=True)
 

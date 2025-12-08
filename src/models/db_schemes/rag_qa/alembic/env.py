@@ -7,8 +7,11 @@ import os
 import sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve()
-print(f"[alembic] Using env.py at: {HERE}")
+# Find project root by climbing up from env.py
+BASE_DIR = Path(__file__).resolve().parents[5]
+sys.path.append(str(BASE_DIR))
+
+print(f"[alembic] Added to path: {BASE_DIR}")
 
 import sys
 sys.path.append("/app")

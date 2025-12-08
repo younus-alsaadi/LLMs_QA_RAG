@@ -18,6 +18,8 @@ class DataChunk(SQLAlchemyBase):
     chunk_project_id = Column(Integer, ForeignKey("projects.project_id"), nullable=False)
     chunk_asset_id = Column(Integer, ForeignKey("assets.asset_id"), nullable=False)
 
+    chunk_asset_name = Column(String, nullable=False)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
@@ -31,6 +33,8 @@ class DataChunk(SQLAlchemyBase):
 
 class RetrievedDocument(BaseModel):
     id:str
+    asset_name:str
     text: str
     score: float
+
 

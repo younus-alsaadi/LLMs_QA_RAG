@@ -68,7 +68,7 @@ class NLPController(BaseController):
         collection_name = self.create_collection_name(project_id=project.project_id)
 
         # step2: get text embedding vector
-        vectors = self.embedding_model_client.embed_text(text=text,
+        vectors,usage_data = self.embedding_model_client.embed_text(text=text,
                                                  document_type=DocumentTypeEnum.QUERY.value)
 
 
@@ -82,7 +82,7 @@ class NLPController(BaseController):
         if not query_vector:
             return False
 
-            # step3: do semantic search
+        # step3: do semantic search
         results = await self.vector_db_client.search_by_vector(
                 collection_name=collection_name,
                 vector=query_vector,
@@ -92,13 +92,13 @@ class NLPController(BaseController):
         if not results:
             return False
 
-        return results
+        return results, usage_data
 
     async def answer_rag_question(self, project: Project, query: str, limit: int = 10):
 
         answer, full_prompt, chat_history = None, None, None
         # step1: retrieve related documents
-        retrieved_documents = await self.search_vector_db_collection(
+        retrieved_documents, usage_data = await self.search_vector_db_collection(
             project=project,
             text=query,
             limit=limit
@@ -131,12 +131,12 @@ class NLPController(BaseController):
 
         full_prompt="\n\n".join([documents_prompts,footer_prompt])
 
-        answer_from_generation_model=self.generation_model_client.generate_text(
+        answer_from_generation_model, total_tokens, cost=self.generation_model_client.generate_text(
             prompt=full_prompt,
             chat_history=chat_history
         )
 
-        return answer_from_generation_model, full_prompt, chat_history
+        return answer_from_generation_model, full_prompt, chat_history,total_tokens, cost
 
 
 

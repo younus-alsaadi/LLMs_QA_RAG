@@ -9,8 +9,8 @@ from tqdm.auto import tqdm
 
 
 import logging
-
 logger = logging.getLogger('uvicorn.error')
+logger.setLevel(logging.DEBUG)
 
 
 nlp_router = APIRouter(
@@ -18,14 +18,18 @@ nlp_router = APIRouter(
     tags=["api_v1", "nlp"],
 )
 
+
+
 #change chunks to vector and insert it in VectorDB
 @nlp_router.post("/index/push/{project_id}")
 async def index_project(request: Request, project_id: int, push_request: PushRequest):
+    container = request.app.state.container
+
     project_model = await ProjectModel.create_instance(
-        db_client=request.app.db_client
+        db_client=container.db_client
     )
     chunk_model = await ChunkModel.create_instance(
-        db_client=request.app.db_client
+        db_client=container.db_client
     )
 
     project = await project_model.get_project_or_create_one(
@@ -41,10 +45,10 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
         )
 
     nlp_controller = NLPController(
-        vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client,
-        embedding_client=request.app.embedding_client,
-        template_parser=request.app.template_parser
+        vectordb_client=container.vectordb_client,
+        generation_client=container.generation_client,
+        embedding_client=container.embedding_client,
+        template_parser=container.template_parser
     )
 
     has_records=True
@@ -55,9 +59,9 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
     # create collection if not exists
     collection_name = nlp_controller.create_collection_name(project_id=project.project_id)
 
-    _ = await request.app.vectordb_client.create_collection(
+    _ = await container.vectordb_client.create_collection(
         collection_name=collection_name,
-        embedding_size=request.app.embedding_client.embedding_dimensions_size,
+        embedding_size=container.embedding_client.embedding_dimensions_size,
         do_reset=push_request.do_reset,
     )
 
@@ -107,8 +111,9 @@ async def index_project(request: Request, project_id: int, push_request: PushReq
 #Get Info about the collection in vectorDB
 @nlp_router.get("/index/info/{project_id}")
 async def get_project_index_info(request: Request, project_id: int):
+    container = request.app.state.container
     project_model = await ProjectModel.create_instance(
-        db_client=request.app.db_client
+        db_client=container.db_client
     )
 
     project = await project_model.get_project_or_create_one(
@@ -117,10 +122,10 @@ async def get_project_index_info(request: Request, project_id: int):
 
 
     nlp_controller = NLPController(
-        vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client,
-        embedding_client=request.app.embedding_client,
-        template_parser=request.app.template_parser
+        vectordb_client=container.vectordb_client,
+        generation_client=container.generation_client,
+        embedding_client=container.embedding_client,
+        template_parser=container.template_parser
     )
 
 
@@ -135,18 +140,19 @@ async def get_project_index_info(request: Request, project_id: int):
 
 @nlp_router.post("/index/search/{project_id}")
 async def search_index(request: Request, project_id: int, search_request: SearchRequest):
-    project_model = await ProjectModel.create_instance(db_client=request.app.db_client)
+    container = request.app.state.container
+    project_model = await ProjectModel.create_instance(db_client=container.db_client)
     project = await project_model.get_project_or_create_one(project_id=project_id)
 
     nlp_controller = NLPController(
-        vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client,
-        embedding_client=request.app.embedding_client,
-        template_parser=request.app.template_parser,
+        vectordb_client=container.vectordb_client,
+        generation_client=container.generation_client,
+        embedding_client=container.embedding_client,
+        template_parser=container.template_parser,
     )
 
     try:
-        results =await nlp_controller.search_vector_db_collection(
+        results, usage_data =await nlp_controller.search_vector_db_collection(
             project=project,
             text=search_request.text,
             limit=search_request.limit
@@ -180,15 +186,17 @@ async def search_index(request: Request, project_id: int, search_request: Search
     return JSONResponse(
         content={
             "signal": ResponseSignalEnum.VECTORDB_SEARCH_SUCCESS.value,
-            "results": [r.dict() for r in results]
+            "results": [r.dict() for r in results],
+            "usage_data": usage_data
         }
     )
 
 #Take the similar chunk and send it to the LLM to generate an answer
 @nlp_router.post("/index/answer/{project_id}")
 async def answer_rag_from_user(request: Request, project_id: int, search_request: SearchRequest):
+    container = request.app.state.container
     project_model = await ProjectModel.create_instance(
-        db_client=request.app.db_client
+        db_client=container.db_client
     )
 
     project = await project_model.get_project_or_create_one(
@@ -196,17 +204,21 @@ async def answer_rag_from_user(request: Request, project_id: int, search_request
     )
 
     nlp_controller = NLPController(
-        vectordb_client=request.app.vectordb_client,
-        generation_client=request.app.generation_client,
-        embedding_client=request.app.embedding_client,
-        template_parser=request.app.template_parser,
+        vectordb_client=container.vectordb_client,
+        generation_client=container.generation_client,
+        embedding_client=container.embedding_client,
+        template_parser=container.template_parser,
     )
 
-    answer_from_generation_model, full_prompt, chat_history= await nlp_controller.answer_rag_question(
+    answer_from_generation_model, full_prompt, chat_history, total_tokens, cost= await nlp_controller.answer_rag_question(
         project=project,
         query=search_request.text,
         limit=search_request.limit,
     )
+
+    logger.debug("=" * 20)
+    logger.debug("")
+    logger.debug("=" * 20)
 
     if not answer_from_generation_model:
         return JSONResponse(
@@ -221,7 +233,9 @@ async def answer_rag_from_user(request: Request, project_id: int, search_request
             "signal": ResponseSignalEnum.RAG_ANSWER_SUCCESS.value,
             "answer": answer_from_generation_model,
             "full_prompt": full_prompt,
-            "chat_history": chat_history
+            "chat_history": chat_history,
+            "total_tokens":total_tokens,
+            "cost": cost
         })
 
 

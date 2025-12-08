@@ -1,0 +1,2 @@
+{"query": "What is RAG?", "ground_truth_answer": "RAG is Retrieval-Augmented Generation, a pattern where...", "ground_truth_doc_ids": ["doc_rag_intro", "doc_rag_arch"]}
+{"query": "How do you handle missing tomograms?", "ground_truth_answer": "We exclude them from training and...", "ground_truth_doc_ids": ["thesis_chapter4", "cryoflow_section2"]}

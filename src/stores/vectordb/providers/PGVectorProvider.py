@@ -5,6 +5,7 @@ import logging
 from typing import List
 import json
 from sqlalchemy.sql import text as sql_text
+import os
 
 
 class PGVectorProvider(VectorDBInterface):
@@ -280,7 +281,7 @@ class PGVectorProvider(VectorDBInterface):
         async with self.db_client() as session:
             async with session.begin():
                 search_sql = sql_text(
-                    f'SELECT {PgVectorTableSchemeEnums.ID.value} as id, {PgVectorTableSchemeEnums.TEXT.value} as text, 1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score'
+                    f'SELECT {PgVectorTableSchemeEnums.ID.value} as id, {PgVectorTableSchemeEnums.TEXT.value} as text,{PgVectorTableSchemeEnums.METADATA.value} as metadata, 1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score'
                     f' FROM {collection_name}'
                     ' ORDER BY score DESC '
                     f'LIMIT {limit}'
@@ -288,17 +289,41 @@ class PGVectorProvider(VectorDBInterface):
                 result = await session.execute(search_sql, {"vector": vector})
 
                 records = result.fetchall()
+                docs: list[RetrievedDocument] = []
 
+                for record in records:
+                    meta = record.metadata
 
+                    # If JSONB is returned as text, parse it
+                    if isinstance(meta, str):
+                        try:
+                            meta = json.loads(meta)
+                        except json.JSONDecodeError:
+                            meta = {}
 
-                return [
-                    RetrievedDocument(
-                        id=str(record.id),
-                        text=record.text,
-                        score=record.score
+                    if not isinstance(meta, dict):
+                        meta = {}
+
+                    # get "source" field and extract just the file name
+                    source_path = meta.get("source") or meta.get("file_path") or ""
+                    file_name = os.path.basename(source_path) if source_path else ""
+
+                    docs.append(
+                        RetrievedDocument(
+                            id=str(record.id),
+                            asset_name=file_name,
+                            text=record.text,
+                            score=record.score,
+                        )
                     )
-                    for record in records
-                ]
+
+                return docs
+
+
+
+
+
+
 
     async def is_index_existed(self, collection_name: str) -> bool:
 

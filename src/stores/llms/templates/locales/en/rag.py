@@ -19,6 +19,7 @@ system_prompt = Template("\n".join([
 document_prompt=Template("\n".join([
     "## Document No: $doc_num",
     "### Content: $chunk_text",
+    "==\n\n"
 ]))
 
 #### Footer ####

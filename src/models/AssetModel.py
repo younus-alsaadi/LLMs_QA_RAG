@@ -62,11 +62,11 @@ class AssetModel(BaseDataModel):
         #     for record in record
         # ]
 
-    async def get_one_asset_record(self, asset_project_id: str, asset_name: str):
+    async def get_one_asset_record(self, asset_project_id: str, asset_name_unique: str):
         async with self.db_client() as session:
             stmt = select(Asset).where(
                 Asset.asset_project_id == asset_project_id,
-                Asset.asset_name == asset_name
+                Asset.asset_name_unique == asset_name_unique
             )
             result = await session.execute(stmt)
             record = result.scalar_one_or_none()
