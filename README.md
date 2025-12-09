@@ -4,14 +4,14 @@ This is a minimal implementation of the Retrieval-Augmented Generation (RAG) mod
 
 ## Requirements
 
-- Python 3.9 or later
+- Python 3.12 or later
 
 ### Install Python using MiniConda
 
 1. Download and install MiniConda from [here](https://docs.anaconda.com/free/miniconda/#quick-command-line-install)
 2. Create a new environment:
    ```bash
-   conda create -n rag_system python=3.8
+   conda create -n rag_system python=3.12
 3) Activate the environment:
     ```bash
     $ conda activate mini-rag
